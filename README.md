@@ -1,4 +1,3 @@
-# bus_schedule_widget_for_ios
 # Scriptable ウィジェットの使い方
 
 ## 手順
