@@ -32,10 +32,10 @@
 
 | 設定項目 | 説明 | 例 |
 |-----------|------|----|
-| `EXPIRATION_DATE` | ウィジェットの有効期限を設定します | `new Date(2025, 11, 24)` |
+| `EXPIRATION_DATE` | ウィジェットの有効期限を設定します | `new Date(2026, 11, 23, 23, 59, 59, 999)` |
 | `WIDGET_BG_COLOR` | 背景色を変更できます | `"#0C1220"` |
-| `CARD_RADIUS` | カードの角丸サイズ | `18` |
-| `FONT_SIZE` | 各テキストサイズの調整 | `{ title: 12, nextTime: 22, ... }` |
+| `LAYOUT` | ウィジェットのサイズ（small / medium / large / extraLarge）ごとの余白・角丸・文字サイズ・表示する便数 | `LAYOUT.medium.fontSize.nextTime = 28` |
+| `TEST_FAMILY` | Scriptable アプリ内でプレビューするときのサイズ | `"small"` |
 | `ROUTE_COLOR` | 路線ごとのテーマカラー | `{ tsudanuma: "#1E3A8A" }` |
 
 有効期限を過ぎると、ウィジェット上に「更新が必要です」と表示されるようになっています。  
