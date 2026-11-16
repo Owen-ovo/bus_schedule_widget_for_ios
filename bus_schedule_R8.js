@@ -87,32 +87,14 @@ const routes = {
 };
 
 
-// -------------------- 祝日 --------------------
-// 祝日APIから取得して30日間キャッシュする。通信できないときはキャッシュ→下の一覧の順で使う。
-const HOLIDAY_API = "https://holidays-jp.github.io/api/v1/date.json";
-const FALLBACK_HOLIDAYS = [
-  "2026-01-01","2026-01-12","2026-02-11","2026-02-23","2026-03-20","2026-04-29",
-  "2026-05-03","2026-05-04","2026-05-05","2026-05-06","2026-07-20","2026-08-11",
-  "2026-09-21","2026-09-22","2026-09-23","2026-10-12","2026-11-03","2026-11-23"
+// -------------------- 休講日 --------------------
+// 大学の学年暦で授業がない日（日曜以外）。この日は「日曜日・祝日・休日」ダイヤになる。
+// ここにない日は、祝日でも授業日として平日・土曜ダイヤで走る（例：11/3 は祝日授業日）。
+const CLOSED_DAYS = [
+  "2026-11-20", // 津田沼祭準備（休講）
+  "2026-11-21", // 津田沼祭（休講）
+  "2026-11-23"  // 津田沼祭後片付け（休講）
 ];
-
-async function loadHolidays(){
-  const fm = FileManager.local();
-  const path = fm.joinPath(fm.documentsDirectory(), "bus_schedule_holidays.json");
-  const cached = fm.fileExists(path) ? JSON.parse(fm.readString(path)) : null;
-  if(cached && Date.now() - cached.fetchedAt < 1000*60*60*24*30){
-    return new Set([...cached.dates, ...FALLBACK_HOLIDAYS]);
-  }
-  try {
-    const req = new Request(HOLIDAY_API);
-    req.timeoutInterval = 5;
-    const dates = Object.keys(await req.loadJSON());
-    fm.writeString(path, JSON.stringify({ fetchedAt: Date.now(), dates }));
-    return new Set([...dates, ...FALLBACK_HOLIDAYS]);
-  } catch(e) {
-    return new Set([...(cached ? cached.dates : []), ...FALLBACK_HOLIDAYS]);
-  }
-}
 
 
 // -------------------- 日付関数 --------------------
@@ -125,22 +107,23 @@ function formatTime(d){
 }
 
 // routeObj を渡すとその路線の特別ダイヤも考慮する
-function dayType(date, holidays, routeObj){
+function dayType(date, routeObj){
   const s = formatDate(date);
   if(routeObj && routeObj.special[s]) return "special";
-  if(holidays.has(s) || date.getDay()===0) return "holiday";
+  if(CLOSED_DAYS.includes(s) || date.getDay()===0) return "holiday";
   if(date.getDay()===6) return "saturday";
   return "weekday";
 }
 
-function dayLabel(date, holidays){
+function dayLabel(date){
   const s = formatDate(date);
   if(Object.values(routes).some(r => r.special[s])) return "特別日";
-  return { holiday: "休日", saturday: "土曜", weekday: "平日" }[dayType(date, holidays)];
+  if(CLOSED_DAYS.includes(s)) return "休講日";
+  return { holiday: "休日", saturday: "土曜", weekday: "平日" }[dayType(date)];
 }
 
-function departuresOn(routeObj, date, holidays){
-  const type = dayType(date, holidays, routeObj);
+function departuresOn(routeObj, date){
+  const type = dayType(date, routeObj);
   const list = type==="special" ? routeObj.special[formatDate(date)] : routeObj[type];
   return list.map(t => {
     const [h, m] = t.split(":").map(Number);
@@ -151,12 +134,15 @@ function departuresOn(routeObj, date, holidays){
 }
 
 // 今日の残りの便。今日が終わっていれば明日の便を返す
-function nextDepartures(routeObj, now, holidays, count){
-  const today = departuresOn(routeObj, now, holidays).filter(d => d > now);
+// 明日がダイヤの期限を過ぎていれば運休期間なので便なしにする
+function nextDepartures(routeObj, now, count){
+  const today = departuresOn(routeObj, now).filter(d => d > now);
   if(today.length) return { times: today.slice(0, count), tomorrow: false };
   const tomorrow = new Date(now);
+  tomorrow.setHours(0, 0, 0, 0);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  return { times: departuresOn(routeObj, tomorrow, holidays).slice(0, count), tomorrow: true };
+  if(tomorrow > EXPIRATION_DATE) return { times: [], tomorrow: false };
+  return { times: departuresOn(routeObj, tomorrow).slice(0, count), tomorrow: true };
 }
 
 
@@ -201,10 +187,9 @@ if(now > EXPIRATION_DATE){
 
 
 // ---------- 通常表示 ----------
-const holidays = await loadHolidays();
 const departures = {};
 for(const key in routes){
-  departures[key] = nextDepartures(routes[key], now, holidays, L.nextCount);
+  departures[key] = nextDepartures(routes[key], now, L.nextCount);
 }
 
 // 次の便が出た直後か、日付が変わった直後に更新する
@@ -267,7 +252,7 @@ if(L.compact){
       let t = sub.addText("明日の始発");
       t.font = Font.systemFont(L.fontSize.countdown);
       t.textColor = Color.lightGray();
-    } else {
+    } else if(times[0]){
       addCountdown(sub, times[0], L.fontSize.countdown);
     }
   }
@@ -336,7 +321,7 @@ if(L.compact){
 
 // フッター
 const exp = EXPIRATION_DATE;
-let footer = widget.addText(`${formatDate(now)} · ${dayLabel(now, holidays)} · ダイヤ〜${exp.getMonth()+1}/${exp.getDate()}`);
+let footer = widget.addText(`${formatDate(now)} · ${dayLabel(now)} · ダイヤ〜${exp.getMonth()+1}/${exp.getDate()}`);
 footer.font = Font.systemFont(L.fontSize.footer);
 footer.textColor = Color.lightGray();
 footer.lineLimit = 1;
